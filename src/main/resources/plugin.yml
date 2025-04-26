@@ -1,0 +1,9 @@
+name: WGExtender
+version: '${version}'
+main: eu.kruzer.wgextender.WGExtender
+author: github.com/kruz3r
+api-version: '1.16'
+depend: [WorldGuard, WorldEdit, Vault]
+commands:
+  wgextender:
+    aliases: [wgex, lgex]

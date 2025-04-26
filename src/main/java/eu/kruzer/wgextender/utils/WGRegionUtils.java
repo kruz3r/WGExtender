@@ -1,0 +1,126 @@
+/**
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 3
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ *
+ */
+package eu.kruzer.wgextender.utils;
+
+import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldedit.extension.platform.Actor;
+import com.sk89q.worldguard.LocalPlayer;
+import com.sk89q.worldguard.WorldGuard;
+import com.sk89q.worldguard.bukkit.BukkitWorldConfiguration;
+import com.sk89q.worldguard.bukkit.WorldGuardPlugin;
+import com.sk89q.worldguard.internal.platform.WorldGuardPlatform;
+import com.sk89q.worldguard.protection.ApplicableRegionSet;
+import com.sk89q.worldguard.protection.flags.BooleanFlag;
+import com.sk89q.worldguard.protection.flags.Flags;
+import com.sk89q.worldguard.protection.flags.StateFlag;
+import com.sk89q.worldguard.protection.managers.RegionManager;
+import com.sk89q.worldguard.protection.regions.RegionContainer;
+import com.sk89q.worldguard.protection.regions.RegionQuery;
+import org.bukkit.Location;
+import org.bukkit.World;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
+import java.lang.reflect.Proxy;
+
+public class WGRegionUtils {
+	public static final RegionQuery REGION_QUERY = getRegionContainer().createQuery();
+
+	public static LocalPlayer wrapPlayer(Player player) {
+		return WorldGuardPlugin.inst().wrapPlayer(player);
+	}
+
+	// TODO Some users may consider hiding messages. Config option?
+	public static Actor wrapAsPrivileged(CommandSender sender) {
+		Actor actor;
+		if (sender instanceof Player) {
+			Player player = (Player) sender;
+			actor = wrapPlayer(player);
+		} else {
+			actor = WorldGuardPlugin.inst().wrapCommandSender(sender);
+		}
+		return (Actor) Proxy.newProxyInstance(
+				actor.getClass().getClassLoader(),
+				actor.getClass().getInterfaces(),
+				(proxy, method, args) -> {
+					switch (method.getName()) {
+						case "hasPermission":
+							return true;
+						case "checkPermission":
+							return null;
+						default:
+							return method.invoke(actor, args);
+					}
+				}
+		);
+	}
+
+	public static WorldGuardPlatform getPlatform() {
+		return WorldGuard.getInstance().getPlatform();
+	}
+
+	public static RegionContainer getRegionContainer() {
+		return getPlatform().getRegionContainer();
+	}
+
+	public static RegionManager getRegionManager(World world) {
+		return getRegionContainer().get(BukkitAdapter.adapt(world));
+	}
+
+	public static BukkitWorldConfiguration getWorldConfig(World world) {
+		return (BukkitWorldConfiguration) getPlatform().getGlobalStateManager().get(BukkitAdapter.adapt(world));
+	}
+
+	public static BukkitWorldConfiguration getWorldConfig(Player player) {
+		return getWorldConfig(player.getWorld());
+	}
+
+	public static boolean canBypassProtection(Player player) {
+		return getPlatform().getSessionManager().hasBypass(wrapPlayer(player), BukkitAdapter.adapt(player.getWorld()));
+	}
+
+	public static boolean isInWGRegion(Location location) {
+		return getRegionsAt(location).size() > 0;
+	}
+
+	public static boolean isInTheSameRegionOrWild(Location location1, Location location2) {
+		return getRegionsAt(location1).getRegions().equals(getRegionsAt(location2).getRegions());
+	}
+
+	public static boolean isInTheSameRegion(Location location1, Location location2) {
+		ApplicableRegionSet ars1 = getRegionsAt(location1);
+		ApplicableRegionSet ars2 = getRegionsAt(location2);
+		return (ars1.size() > 0) && ars1.getRegions().equals(ars2.getRegions());
+	}
+
+	public static boolean canBuild(Player player, Location location) {
+		return isFlagAllows(player, location, Flags.BUILD);
+	}
+
+	public static boolean isFlagAllows(Player player, Location location, StateFlag flag) {
+		return REGION_QUERY.testState(BukkitAdapter.adapt(location), WorldGuardPlugin.inst().wrapPlayer(player), flag);
+	}
+
+	public static boolean isFlagTrue(Location location, BooleanFlag flag) {
+		Boolean bool = REGION_QUERY.queryValue(BukkitAdapter.adapt(location), null, flag);
+		return (bool != null) && bool;
+	}
+
+	public static ApplicableRegionSet getRegionsAt(Location location) {
+		return REGION_QUERY.getApplicableRegions(BukkitAdapter.adapt(location));
+	}
+}
